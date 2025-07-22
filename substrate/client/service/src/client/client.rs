@@ -41,7 +41,7 @@ use sc_client_api::{
 	execution_extensions::ExecutionExtensions,
 	notifications::{StorageEventStream, StorageNotifications},
 	CallExecutor, ExecutorProvider, KeysIter, OnFinalityAction, OnImportAction, PairsIter,
-	ProofProvider, UnpinWorkerMessage, UsageProvider,
+	ProofProvider, ProofProviderHashDb, UnpinWorkerMessage, UsageProvider,
 };
 use sc_consensus::{
 	BlockCheckParams, BlockImportParams, ForkChoiceStrategy, ImportResult, StateAction,
@@ -57,6 +57,7 @@ use sp_blockchain::{
 	HeaderBackend as ChainHeaderBackend, HeaderMetadata, Info as BlockchainInfo,
 };
 use sp_consensus::{BlockOrigin, BlockStatus, Error as ConsensusError};
+use trie_db::NibbleVec;
 
 use sc_utils::mpsc::{tracing_unbounded, TracingUnboundedSender};
 use sp_core::{
@@ -89,6 +90,9 @@ use std::{
 use {
 	super::call_executor::LocalCallExecutor, sc_client_api::in_mem, sp_core::traits::CodeExecutor,
 };
+
+// error[E0658]: associated type defaults are unstable
+type HashDbEmplaceBatch<B> = Vec<(NibbleVec, <B as BlockT>::Hash, Vec<u8>)>;
 
 type NotificationSinks<T> = Mutex<Vec<TracingUnboundedSender<T>>>;
 
@@ -645,6 +649,10 @@ where
 						operation.op.update_transaction_index(tx_index)?;
 
 						Some((main_sc, child_sc))
+					},
+					sc_consensus::StorageChanges::Import(changes) if changes.written => {
+						operation.op.set_state_sync_done();
+						None
 					},
 					sc_consensus::StorageChanges::Import(changes) => {
 						let mut storage = sp_storage::Storage::default();
@@ -1232,6 +1240,20 @@ where
 	/// Get usage info about current client.
 	fn usage_info(&self) -> ClientInfo<Block> {
 		ClientInfo { chain: self.chain_info(), usage: self.backend.usage_info() }
+	}
+}
+
+impl<B, E, Block, RA> ProofProviderHashDb<Block> for Client<B, E, Block, RA>
+where
+	B: backend::Backend<Block>,
+	E: CallExecutor<Block>,
+	Block: BlockT,
+{
+	fn hash_db_contains(&self, prefix: &NibbleVec, hash: &Block::Hash) -> bool {
+		self.backend.hash_db_contains(prefix, hash)
+	}
+	fn hash_db_emplace_batch(&self, batch: HashDbEmplaceBatch<Block>) -> sp_blockchain::Result<()> {
+		self.backend.hash_db_emplace_batch(batch)
 	}
 }
 

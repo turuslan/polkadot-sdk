@@ -52,6 +52,7 @@ sp-storage.workspace = true
 sp-storage.default-features = true
 sp-trie.workspace = true
 sp-trie.default-features = true
+trie-db = { workspace = true }
 
 [dev-dependencies]
 thiserror = { workspace = true }

@@ -121,6 +121,7 @@ tempfile = { workspace = true }
 directories = { workspace = true }
 static_init = { workspace = true }
 schnellru = { workspace = true }
+trie-db = { workspace = true }
 
 [dev-dependencies]
 substrate-test-runtime-client = { path = "../../test-utils/runtime/client" }
