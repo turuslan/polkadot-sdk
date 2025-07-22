@@ -1519,7 +1519,7 @@ where
 			ChainSyncMode::Full =>
 				BlockAttributes::HEADER | BlockAttributes::JUSTIFICATION | BlockAttributes::BODY,
 			ChainSyncMode::LightState { storage_chain_mode: false, .. } =>
-				BlockAttributes::HEADER | BlockAttributes::JUSTIFICATION | BlockAttributes::BODY,
+				BlockAttributes::HEADER | BlockAttributes::JUSTIFICATION,
 			ChainSyncMode::LightState { storage_chain_mode: true, .. } =>
 				BlockAttributes::HEADER |
 					BlockAttributes::JUSTIFICATION |

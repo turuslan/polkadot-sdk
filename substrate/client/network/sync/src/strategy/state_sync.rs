@@ -350,6 +350,7 @@ where
 			}
 			self.levels.pop();
 		}
+		println!("hash_db_emplace_batch batch={}", batch.len());
 		self.client.hash_db_emplace_batch(batch).unwrap();
 		self.levels.is_empty()
 	}
@@ -394,7 +395,9 @@ where
 				return ImportResult::BadResponse;
 			}
 			self.imported_bytes += proof_size;
+			println!("on_proof_response nodes={}", proof.encoded_nodes.len());
 			let complete = self.on_proof_response(&proof_db);
+			println!("complete={}", complete);
 			self.last_key =
 				self.levels.iter().map(|level| level.prefix.inner().to_vec()).collect();
 			complete
