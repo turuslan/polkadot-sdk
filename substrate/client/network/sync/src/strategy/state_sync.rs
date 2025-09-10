@@ -133,10 +133,12 @@ struct Level<B: BlockT> {
 	state: LevelState<B>,
 	stack: Vec<LevelNode<B>>,
 	prefix: NibbleVec,
+	initial_prefix_len: usize,
 }
 impl<B: BlockT> Level<B> {
 	fn new(allow_child: bool, prefix: NibbleVec, root: B::Hash) -> Self {
-		Self { allow_child, state: LevelState::Root(root), stack: vec![], prefix }
+		let initial_prefix_len = prefix.inner().len();
+		Self { allow_child, state: LevelState::Root(root), stack: vec![], prefix, initial_prefix_len }
 	}
 	// ChildHash | ValueHash | Value | Branch | Pop -> Branch | End
 	fn next_branch(&mut self) {
@@ -350,7 +352,7 @@ where
 			}
 			self.levels.pop();
 		}
-		println!("hash_db_emplace_batch batch={}", batch.len());
+		log::info!(target: "StateSyncResume", "hash_db_emplace_batch batch={}", batch.len());
 		self.client.hash_db_emplace_batch(batch).unwrap();
 		self.levels.is_empty()
 	}
@@ -395,11 +397,11 @@ where
 				return ImportResult::BadResponse;
 			}
 			self.imported_bytes += proof_size;
-			println!("on_proof_response nodes={}", proof.encoded_nodes.len());
+			log::info!(target: "StateSyncResume", "on_proof_response nodes={}", proof.encoded_nodes.len());
 			let complete = self.on_proof_response(&proof_db);
-			println!("complete={}", complete);
+			log::info!(target: "StateSyncResume", "complete={}", complete);
 			self.last_key =
-				self.levels.iter().map(|level| level.prefix.inner().to_vec()).collect();
+				self.levels.iter().map(|level| level.prefix.inner()[level.initial_prefix_len..].to_vec()).collect();
 			complete
 		} else {
 			let mut complete = true;
