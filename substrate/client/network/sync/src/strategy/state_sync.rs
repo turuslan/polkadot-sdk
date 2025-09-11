@@ -307,7 +307,7 @@ where
 					LevelState::ChildHash(prefix, hash) => {
 						if !is_known(&self.client, &self.null_hash, prefix, hash) {
 							let child_level = Level::new(false, std::mem::take(prefix), *hash);
-							level.next_branch();
+							level.state = LevelState::Value;
 							self.levels.push(child_level);
 						} else {
 							level.next_branch();
