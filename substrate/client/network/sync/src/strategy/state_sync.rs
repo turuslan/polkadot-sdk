@@ -359,6 +359,95 @@ where
 		}
 		complete
 	}
+
+	fn _import(&mut self, response: StateResponse) -> ImportResult<B> {
+		if response.entries.is_empty() && response.proof.is_empty() {
+			debug!(target: LOG_TARGET, "Bad state response");
+			return ImportResult::BadResponse
+		}
+		if !self.metadata.skip_proof && response.proof.is_empty() {
+			debug!(target: LOG_TARGET, "Missing proof");
+			return ImportResult::BadResponse
+		}
+		let (complete, partial_state) = if !self.metadata.skip_proof {
+			debug!(target: LOG_TARGET, "Importing state from {} trie nodes", response.proof.len());
+			let proof_size = response.proof.len() as u64;
+			let proof = match CompactProof::decode(&mut response.proof.as_ref()) {
+				Ok(proof) => proof,
+				Err(e) => {
+					debug!(target: LOG_TARGET, "Error decoding proof: {:?}", e);
+					return ImportResult::BadResponse
+				},
+			};
+
+			let mut partial_state = PrefixedMemoryDB::<HashingFor<B>>::new(&[]);
+			if let Err(e) = sp_trie::decode_compact::<sp_state_machine::LayoutV0<HashingFor<B>>, _, _>(
+				&mut partial_state,
+				proof.iter_compact_encoded_nodes(),
+				Some(&self.metadata.target_root()),
+			) {
+				debug!(
+					target: LOG_TARGET,
+					"Error decoding proof to prefixed db: {}",
+					e,
+				);
+				return ImportResult::BadResponse
+			}
+
+			let (values, completed) = match self.client.verify_range_proof(
+				self.metadata.target_root(),
+				proof,
+				self.metadata.last_key.as_slice(),
+			) {
+				Err(e) => {
+					debug!(
+						target: LOG_TARGET,
+						"StateResponse failed proof verification: {}",
+						e,
+					);
+					return ImportResult::BadResponse
+				},
+				Ok(values) => values,
+			};
+			debug!(target: LOG_TARGET, "Imported with {} keys", values.len());
+
+			let complete = completed == 0;
+			if !complete && !values.update_last_key(completed, &mut self.metadata.last_key) {
+				debug!(target: LOG_TARGET, "Error updating key cursor, depth: {}", completed);
+			};
+
+			self.metadata.imported_bytes += proof_size;
+			(complete, Some(partial_state))
+		} else {
+			(self.process_state_unverified(response), None)
+		};
+		if complete {
+			self.metadata.complete = true;
+			let target_hash = self.metadata.target_hash();
+			let state = if partial_state.is_none() {
+				ImportedState::KeyValues { block: target_hash, state: std::mem::take(&mut self.state).into() }
+			} else {
+				ImportedState::Proof
+			};
+			ImportResult::Import {
+				hash: target_hash,
+				header: self.metadata.target_header.clone(),
+				partial_state,
+				state,
+				body: self.metadata.target_body.clone(),
+				justifications: self.metadata.target_justifications.clone(),
+			}
+		} else {
+			ImportResult::Continue {
+				partial_state,
+			}
+		}
+	}
+
+	/// Produce next state request.
+	fn _next_request(&self) -> StateRequest {
+		self.metadata.next_request()
+	}
 }
 
 impl<B, Client> StateSyncProvider<B> for StateSync<B, Client>
@@ -368,6 +457,9 @@ where
 {
 	///  Validate and import a state response.
 	fn import(&mut self, response: StateResponse) -> ImportResult<B> {
+		if std::env::var_os("PROPOSAL").is_none() {
+			return self._import(response);
+		}
 		if response.entries.is_empty() && response.proof.is_empty() {
 			debug!(target: LOG_TARGET, "Bad state response");
 			return ImportResult::BadResponse
@@ -445,6 +537,9 @@ where
 
 	/// Produce next state request.
 	fn next_request(&self) -> StateRequest {
+		if std::env::var_os("PROPOSAL").is_none() {
+			return self._next_request();
+		}
 		StateRequest {
 			block: self.target_hash().encode(),
 			start: vec![CLIENT_PROOF.to_vec(), self.tree.request().encode()],
