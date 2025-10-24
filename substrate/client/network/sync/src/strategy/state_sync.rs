@@ -458,13 +458,16 @@ where
 	///  Validate and import a state response.
 	fn import(&mut self, response: StateResponse) -> ImportResult<B> {
 		if std::env::var_os("PROPOSAL").is_none() {
+			log::info!(target: LOG_TARGET, "response=(old)");
 			return self._import(response);
 		}
 		if response.entries.is_empty() && response.proof.is_empty() {
+			log::info!(target: LOG_TARGET, "response=(empty)");
 			debug!(target: LOG_TARGET, "Bad state response");
 			return ImportResult::BadResponse
 		}
 		if !self.metadata.skip_proof && response.proof.is_empty() {
+			log::info!(target: LOG_TARGET, "response=(empty)");
 			debug!(target: LOG_TARGET, "Missing proof");
 			return ImportResult::BadResponse
 		}
@@ -474,16 +477,19 @@ where
 			let proof = match CompactProof::decode(&mut response.proof.as_ref()) {
 				Ok(proof) => proof,
 				Err(e) => {
+					log::info!(target: LOG_TARGET, "response=(decode error 1)");
 					debug!(target: LOG_TARGET, "Error decoding proof: {:?}", e);
 					return ImportResult::BadResponse
 				},
 			};
 
 			let mut partial_state = PrefixedMemoryDB::<HashingFor<B>>::default();
+			log::info!(target: LOG_TARGET, "response=(new) roots={}", proof.encoded_nodes.len());
 			for proof in &proof.encoded_nodes {
 				let proof = match CompactProof::decode(&mut &proof[..]) {
 					Ok(proof) => proof,
 					Err(e) => {
+						log::info!(target: LOG_TARGET, "response=(decode error 2)");
 						debug!(target: LOG_TARGET, "Error decoding proof: {:?}", e);
 						return ImportResult::BadResponse;
 					},
@@ -495,14 +501,18 @@ where
 				) {
 					Ok(root) => root,
 					Err(e) => {
+						log::info!(target: LOG_TARGET, "response=(decode error 3)");
 						debug!(target: LOG_TARGET, "Error decoding proof: {:?}", e);
 						return ImportResult::BadResponse;
 					},
 				};
 				if let Some(paths) = self.paths.remove(&root) {
+					log::info!(target: LOG_TARGET, "response=(new) root paths=Some({})", paths.len());
 					for mut path in paths {
 						fill(&mut self.tree, &mut self.paths, &mut partial_state, &db, &mut path, 0);
 					}
+				} else {
+					log::info!(target: LOG_TARGET, "response=(new) root paths=None");
 				}
 			}
 			debug!(target: LOG_TARGET, "Imported with ??? nodes");
@@ -510,6 +520,7 @@ where
 			self.metadata.imported_bytes += proof_size;
 			(self.tree.complete(), Some(partial_state))
 		} else {
+			log::info!(target: LOG_TARGET, "response=(plain)");
 			(self.process_state_unverified(response), None)
 		};
 		if complete {
@@ -538,8 +549,10 @@ where
 	/// Produce next state request.
 	fn next_request(&self) -> StateRequest {
 		if std::env::var_os("PROPOSAL").is_none() {
+			log::info!(target: LOG_TARGET, "request=(old)");
 			return self._next_request();
 		}
+		log::info!(target: LOG_TARGET, "request=(new)");
 		StateRequest {
 			block: self.target_hash().encode(),
 			start: vec![CLIENT_PROOF.to_vec(), self.tree.request().encode()],
